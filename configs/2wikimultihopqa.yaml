@@ -1,0 +1,17 @@
+# configs/2wikimultihopqa.yaml
+# Settings for 2WikiMultiHopQA
+
+# --- Benchmark Data ---
+dataset_path: "data/benchmarks/2wikimultihopqa/test.jsonl" 
+dataset_loader: "load_2wikimultihopqa" 
+metrics: ["em", "f1"] 
+
+# --- Knowledge Source ---
+# This benchmark will use the 'wikipedia_dpr' graph and corpus
+corpus_path: "data/corpus/wiki18_100w.jsonl"
+graph_path: "data/graphs/wiki18_100w_rebel_large_graph.json"
+processed_docs_path: "data/graphs/wiki18_100w_rebel_large_docs.json"
+bm25_index_path: "data/graphs/wiki18_100w_bm25s_index/"
+node_index_path: "data/graphs/wiki18_100w_bm25s_node_index/"
+edge_index_path: "data/graphs/wiki18_100w_bm25s_edge_index/"
+chunk_index_path: "data/graphs/wiki18_100w_bm25s_chunk_index/"

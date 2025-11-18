@@ -1,0 +1,5 @@
+outs:
+- md5: cfcbd231a8eaed8180f560a12f9c2c3f
+  size: 14
+  hash: md5
+  path: auth_test.txt

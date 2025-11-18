@@ -1,0 +1,29 @@
+# Core LLM & Torch
+transformers
+torch
+vllm                # Or your preferred LLM serving backend
+
+# Phase 0: Graph Seeding
+spacy[cuda-autodetect]               # For NER and OIE dependency parsing
+
+# Phase 1: Agent Tools
+rank_bm25           # For BM25 retrieval (Tools 1 & 4)
+networkx            # For graph manipulation
+pcst_fast           # The PCST solver for Tool 1
+scipy               # Often a dependency for graph solvers
+txtai
+duckdb
+
+# Evaluation & Config
+PyYAML              # To load our new .yaml config files
+tqdm                # For progress bars during evaluation
+more-itertools
+#pyserini 
+bm25s
+PyStemmer
+ijson
+transformers
+accelerate
+bitsandbytes
+pandas
+pyarrow
