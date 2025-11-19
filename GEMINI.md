@@ -143,36 +143,32 @@ This structure makes DVC integration clean and powerful.
 *   **Tracking Experiments**: After `run_abc` is complete, the `data/graphs/experiments/run_abc/` directory contains all the artifacts of that run: the newly generated data and the final state of the `txtai` index. To save this result, you can simply run `dvc add data/graphs/experiments/run_abc`. This makes the entire experiment—and the exact data it generated—fully reproducible.
 *   **Promoting a New Base**: If an experiment's enrichments are deemed valuable enough to become part of the new "standard" graph, you would run a separate, offline script to merge the `base` and `run_abc` Parquet files, creating a new `base_v2` directory, which would then be added to DVC.
 
-## Current Project Status: Architectural Refactoring
+## Current Project Status: Executing Offline Build
 
-The project is in a planned refactoring phase to implement the new `Parquet + DuckDB + txtai + DVC` architecture. The previous goal of debugging the `00_build_graph_rebel.py` script is paused in favor of this more fundamental work. The next steps are outlined in the TODO list below.
+The architectural refactoring is complete. The offline data generation process has now begun on the experiments machine, starting with the graph creation script.
 
-## TODO for Evaluation/Ablation
+## Execution Workflow & TODO
 
-Before any new evaluations or hyperparameter ablations can be run, the following architectural changes must be implemented:
+This is the checklist for running the full pipeline on the **experiments machine**.
 
-1.  **Refactor Graph-Building Scripts (`scripts/00_build_...`)**
-    *   Modify `00_build_graph_rebel.py` and `00_build_graph_textacy.py` to write their output as partitioned Parquet files to the `data/graphs/base/` directory, instead of a single large JSON file.
+1.  **Generate Base Graph**
+    *   **Command**: `python scripts/00build_graph_rebel.py`
+    *   **Status**: `In Progress`
+    *   **Output**: Creates `data/graphs/base/nodes.parquet` and `data/graphs/base/edges.parquet`.
 
-2.  **Create Graph Indexing Script (`scripts/02_build_graph_index.py`)**
-    *   Create a new script that reads the Parquet files from `data/graphs/base/` and builds the initial `txtai` index, saving it to `data/graphs/base/graph_index.txtai/`.
+2.  **Build Base Index**
+    *   **Command**: `python scripts/02_build_graph_index.py`
+    *   **Status**: `Next`
+    *   **Output**: Creates the `data/graphs/base/graph_index.txtai/` directory.
 
-3.  **Update `enrich_rag/graph.py`**
-    *   The `PersistentHyperGraph` class must be updated. It needs to be initialized with both a `base` version and an optional `experiment_id`.
-    *   Its methods must be adapted to query a *composite* view of the graph by using DuckDB to read from both the base and experiment-specific Parquet files (e.g., via `UNION ALL`).
+3.  **Run Full Evaluation**
+    *   **Command**: `python run_evaluation.py --config configs/nq.yaml`
+    *   **Status**: `Pending`
+    *   **Action**: This will trigger the full agentic pipeline, creating and using an experiment directory under `data/graphs/experiments/`.
 
-4.  **Update `enrich_rag/pipeline.py`**
-    *   The `EnrichRAGPipeline` must be modified to handle the setup for each experiment run.
-    *   This includes creating the `data/graphs/experiments/<run_id>/` directory and copying the base `txtai` index into it before starting the agent loop.
-
-5.  **Update Agent Tools (`enrich_rag/tools.py`)**
-    *   **`EnrichContext`**: Rework this tool to use `txtai` for the initial search and `DuckDB` for the subsequent neighbor retrieval from the composite graph view.
-    *   **`EnrichGraph`**: This tool must be updated to write any new nodes/edges to the `new_nodes.parquet` and `new_edges.parquet` files within the current experiment's directory. It should then call `txtai.upsert()` on the experiment-specific `txtai` index.
-
-6.  **Integrate DVC Workflow**
-    *   Establish the standard procedure for versioning the data:
-        *   Run `dvc add data/graphs/base` after the initial build.
-        *   Document the process for running `dvc add data/graphs/experiments/<run_id>` to save the results of a completed experiment.
+4.  **Integrate DVC**
+    *   **Status**: `Pending`
+    *   **Action**: Once the base graph and index are successfully built, we will revisit setting up the DVC remote and run `dvc add data/graphs/base` to version the baseline data artifacts.
 
 ## Development Environment
 
@@ -198,3 +194,11 @@ The project utilizes a two-part development environment:
 ## Gemini Added Memories
 - Future experiment idea: Test asymmetric search patterns for PCST prizes. An 'Entity-Centric' strategy uses high k_nodes and low k_edges (e.g., 15/5), potentially good for comparison questions. A 'Relationship-Centric' strategy uses low k_nodes and high k_edges (e.g., 5/15), which could be powerful for multi-hop questions.
 - This is a coding-only machine. Do not suggest running experiments, installations, or any commands that are not directly related to code editing. All experiments are run on a separate high-performance machine.
+
+## Past Sessions Context
+### DVC & Google Drive Setup Learnings
+Attempting to configure DVC with a personal Google Drive account encountered several issues. The setup was postponed, but the key findings from the troubleshooting process are documented here for future reference.
+
+*   **Google Authentication**: The standard OAuth browser-based login flow is blocked by Google for unverified applications like DVC. The correct, non-interactive method is to use a **Google Service Account**.
+*   **Service Account Storage Quota**: Service Accounts are identities and do not have their own Google Drive storage quota. They cannot save files to a regular "My Drive" folder. To solve this, the Service Account must be added as a **Content manager** to a **Shared Drive**. The DVC remote must then point to the folder ID of this Shared Drive.
+*   **DVC Configuration**: To force DVC to use the service account credentials, the `.dvc/config` file for the remote must be explicitly configured with `gdrive_use_service_account = true`. This is in addition to setting the `gdrive_service_account_json_file_path` to the location of the credentials file.
