@@ -3,37 +3,85 @@ import json
 import re
 import multiprocessing as mp
 from tqdm import tqdm
-import bm25s
-import Stemmer
+import pandas as pd
+import txtai
+
 from .llm import LLMAgent
 from .graph import PersistentHyperGraph
 from .corpus import Corpus
 
-# --- NEW Helper for Tool 4 ---
+# --- Helper for Tool 4 ---
 def parallel_node_tokenize(node_text):
-    stemmer = Stemmer.Stemmer("english")
+    # This is now obsolete as we are not using bm25s here.
+    # Kept for reference, can be removed later.
+    from Stemmer import Stemmer
+    stemmer = Stemmer("english")
     return stemmer.stemWords(str(node_text).split())
-
-def parallel_edge_tokenize(edge_text):
-    stemmer = Stemmer.Stemmer("english")
-    return stemmer.stemWords(str(edge_text).split())
 
 # Tool 1
 class EnrichContextTool:
-    def __init__(self, graph: PersistentHyperGraph, logger):
+    def __init__(self, graph: PersistentHyperGraph, index_path: str, logger):
         self.graph = graph
         self.log = logger
+        self.log(f"[EnrichContextTool] Loading txtai index from: {index_path}")
+        try:
+            self.index = txtai.Embeddings()
+            self.index.load(index_path)
+        except Exception as e:
+            self.log(f"ERROR: Failed to load txtai index at {index_path}. Error: {e}")
+            raise
 
-    def run(self, query, k_nodes, k_edges, exclude_nodes):
-        prizes_dict, prize_edges = self.graph.get_nodes_and_edges_by_bm25(query, k_nodes, k_edges, exclude_nodes)
-        if not prizes_dict:
-            return "", set() 
-            
-        subgraph, subgraph_hyperedges = self.graph.get_subgraph_by_pcst(prizes_dict, prize_edges)
+    def run(self, query: str, k: int, exclude_nodes: set):
+        """
+        Uses txtai to find prize nodes/edges, then DuckDB to get 1-hop neighbors.
+        """
+        self.log(f"Running txtai search for query: '{query}' with k={k}")
         
-        context_str = self.graph.to_text_summary(subgraph, subgraph_hyperedges)
-        retrieved_nodes = set(subgraph.nodes())
-        return context_str, retrieved_nodes
+        # 1. Find Prize Nodes and Edges with txtai
+        # We ask for more results (k*2) to have a richer set to pull from.
+        results = self.index.search(query, limit=k * 2)
+        
+        prize_nodes = set()
+        context_summary = []
+
+        for result in results:
+            score = result['score']
+            item = self.index.documents[result['id']] # Get full document from index
+            
+            if item['tags'] == 'type:entity':
+                node_id = item['text']
+                if node_id not in exclude_nodes:
+                    prize_nodes.add(node_id)
+                    context_summary.append(f"Entity: {node_id}")
+            
+            elif item['tags'] == 'type:triple':
+                s, r, o = item['subject'], item['relation'], item['object']
+                if s not in exclude_nodes:
+                    prize_nodes.add(s)
+                if o not in exclude_nodes:
+                    prize_nodes.add(o)
+                context_summary.append(f"Fact: ({s}, {r}, {o})")
+
+        if not prize_nodes:
+            self.log("txtai search returned no relevant nodes or edges.")
+            return "", set()
+
+        self.log(f"Found {len(prize_nodes)} initial prize nodes from txtai search.")
+
+        # 2. Get 1-Hop Neighbors with DuckDB
+        self.log(f"Fetching 1-hop neighbors for {len(prize_nodes)} nodes...")
+        neighbor_edges_df = self.graph.get_neighbors(list(prize_nodes))
+
+        if not neighbor_edges_df.empty:
+            self.log(f"Found {len(neighbor_edges_df)} neighboring edges.")
+            for _, row in neighbor_edges_df.iterrows():
+                s, r, o = row['subject'], row['relation'], row['object']
+                context_summary.append(f"Fact: ({s}, {r}, {o})")
+                prize_nodes.add(s)
+                prize_nodes.add(o)
+        
+        final_context_str = ". ".join(sorted(list(set(context_summary))))
+        return final_context_str, prize_nodes
 
 # Tool 2
 class CheckSufficiencyTool:
@@ -70,89 +118,90 @@ class EnrichGraphTool:
         self.corpus = corpus
         self.log = logger
 
-    def run(self, query, context, graph: PersistentHyperGraph, processed_docs, k_docs,
-                node_index_path, edge_index_path, chunk_index_path):        
+    def run(self, query: str, context: str, experiment_dir: Path, index_path: Path, k_docs: int):
+        # 1. Ask LLM what to search for
         prompt = f"Context:\n{context}\n\nQuery: {query}\n\nBased on the context, what specific information is missing? Be concise."
         expansion_query = self.llm.generate(prompt, max_tokens=50, stop_tokens=["\n"])
         
-        exclude_doc_ids = set(processed_docs.keys())
-        new_docs_text, new_doc_ids = self.corpus.retrieve(expansion_query, k=k_docs, exclude_doc_ids=exclude_doc_ids)
+        # 2. Retrieve new documents from the corpus
+        # TODO: Need a way to exclude docs already processed in this run
+        new_docs_text, new_doc_ids = self.corpus.retrieve(expansion_query, k=k_docs)
         
         if not new_docs_text:
             self.log("EnrichGraph found no new documents to process.")
-            return False, [] 
+            return False
 
+        # 3. Use LLM to extract facts from new docs
         self.log(f"Enriching graph with {len(new_docs_text)} new documents...")
-        newly_added_nodes = False
+        new_nodes = set()
         new_edges = []
         
         for doc_id, doc_text in zip(new_doc_ids, new_docs_text):
-            prompt = f"Extract all knowledge facts (triples and hyperedges) from the following text as a JSON list:\n\n{doc_text}"
+            prompt = f"Extract all knowledge facts from the following text as a JSON list of triples. Each triple should be a dictionary with 'subject', 'relation', and 'object' keys. Example: [{{'subject': 'Paris', 'relation': 'is the capital of', 'object': 'France'}}]\n\nText: {doc_text}"
             facts_str = self.llm.generate(prompt, max_tokens=1024)
-            facts = self._parse_llm_facts(facts_str) 
+            triples = self._parse_llm_triples(facts_str) 
             
-            if facts:
-                graph.add_deep_facts(doc_id, facts)
-                newly_added_nodes = True
-                
-                for fact in facts:
-                    if fact.get('type') == 'triple':
-                        s, r, t = fact['nodes']
-                        new_edges.append(f"{s} {r} {t}")
+            for triple in triples:
+                s, r, o = triple['subject'], triple['relation'], triple['object']
+                new_nodes.add((s, 'entity'))
+                new_nodes.add((o, 'entity'))
+                new_edges.append({'subject': s, 'relation': r, 'object': o, 'doc_id': doc_id})
 
-        if not newly_added_nodes:
-            self.log("EnrichGraph extracted no new facts.")
-            return True, new_doc_ids 
+        if not new_edges:
+            self.log("EnrichGraph extracted no new facts from the documents.")
+            return True # Return true because we did process new docs, even if no facts were found
 
-        self.log("[EnrichGraph] Re-building all BM25 indexes...")
+        # 4. Append new data to experiment's Parquet files
+        self.log(f"Appending {len(new_nodes)} new nodes and {len(new_edges)} new edges to Parquet files.")
         
-        all_nodes = list(graph.graph.nodes())
-        entity_nodes = [n for n in all_nodes if graph.graph.nodes[n].get('type') != 'chunk']
+        nodes_df = pd.DataFrame(list(new_nodes), columns=['node_id', 'type'])
+        edges_df = pd.DataFrame(new_edges)
+
+        # Use a robust append method
+        self._append_to_parquet(experiment_dir / "new_nodes.parquet", nodes_df)
+        self._append_to_parquet(experiment_dir / "new_edges.parquet", edges_df)
+
+        # 5. Upsert new data into the experiment's txtai index
+        self.log("Upserting new data into txtai index...")
+        index = txtai.Embeddings()
+        index.load(str(index_path))
+
+        index_data = []
+        for _, row in nodes_df.iterrows():
+            index_data.append({"id": row['node_id'], "text": row['node_id'], "tags": "type:entity"})
         
-        all_edge_texts = []
-        all_edge_list = []
-        for u, v, data in graph.graph.edges(data=True):
-            relation = data.get('relation', '')
-            if relation and relation not in ['contains_entity'] and not relation.startswith('in_hyperedge'):
-                all_edge_texts.append(f"{u} {relation} {v}")
-                all_edge_list.append({"s": u, "r": relation, "t": v})
-        
-        num_cores = mp.cpu_count()
-        
-        self.log(f"Tokenizing {len(entity_nodes)} nodes and {len(all_edge_texts)} edges...")
-        with mp.Pool(processes=num_cores) as pool:
-            tokenized_entity_nodes = list(tqdm(pool.imap(parallel_node_tokenize, entity_nodes, chunksize=1000), total=len(entity_nodes), desc="Re-indexing Entities"))
-            tokenized_edge_nodes = list(tqdm(pool.imap(parallel_edge_tokenize, all_edge_texts, chunksize=1000), total=len(all_edge_texts), desc="Re-indexing Edges"))
+        for i, row in edges_df.iterrows():
+            text_rep = f"{row['subject']} {row['relation']} {row['object']}"
+            index_data.append({
+                "id": f"new_triple_{i}_{doc_id}", # More unique ID
+                "text": text_rep, "tags": "type:triple", **row.to_dict()
+            })
+            
+        index.upsert(index_data)
+        index.save(str(index_path))
+        self.log("Index successfully updated and saved.")
 
-        self.log("Saving new node index...")
-        bm25_node_indexer = bm25s.BM25()
-        bm25_node_indexer.index(tokenized_entity_nodes)
-        os.makedirs(node_index_path, exist_ok=True)
-        bm25_node_indexer.save(node_index_path)
-        node_list_path = os.path.join(node_index_path, "node_list.json")
-        with open(node_list_path, 'w') as f:
-            json.dump(entity_nodes, f)
+        return True
 
-        self.log("Saving new edge index...")
-        bm25_edge_indexer = bm25s.BM25()
-        bm25_edge_indexer.index(tokenized_edge_nodes)
-        os.makedirs(edge_index_path, exist_ok=True)
-        bm25_edge_indexer.save(edge_index_path)
-        edge_list_path = os.path.join(edge_index_path, "edge_list.json")
-        with open(edge_list_path, 'w') as f:
-            json.dump(all_edge_list, f)
+    def _append_to_parquet(self, file_path: Path, df: pd.DataFrame):
+        """Appends a DataFrame to a Parquet file."""
+        if file_path.exists():
+            existing_df = pd.read_parquet(file_path)
+            combined_df = pd.concat([existing_df, df]).drop_duplicates(ignore_index=True)
+            combined_df.to_parquet(file_path)
+        else:
+            df.to_parquet(file_path)
 
-        self.log("New indexes saved.")
-
-        graph.save()
-        return True, new_doc_ids 
-
-    def _parse_llm_facts(self, facts_str):
+    def _parse_llm_triples(self, facts_str: str) -> list:
+        """Safely parses a JSON list of triples from the LLM's output string."""
         try:
-            match = re.search(r'\[.*\]', facts_str, re.DOTALL)
-            if match:
-                return json.loads(match.group(0))
+            # Find the first '[' and the last ']'
+            start = facts_str.find('[')
+            end = facts_str.rfind(']')
+            if start != -1 and end != -1:
+                json_str = facts_str[start:end+1]
+                return json.loads(json_str)
             return []
         except json.JSONDecodeError:
-            self.log(f"Warning: Could not parse facts: {facts_str[:100]}...")
+            self.log(f"Warning: Could not parse triples from LLM output: {facts_str[:100]}...")
             return []
