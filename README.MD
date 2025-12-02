@@ -6,20 +6,17 @@
 
 The core idea is to build a **persistent, evolving Knowledge Graph** *exclusively* from a local document corpus. An LLM-powered agent intelligently decides *when* the graph is insufficient and *what* new information to extract from the corpus to "enrich" the graph, improving its knowledge just-in-time.
 
-## 2. Foundational Context & Prior Work
+![alt text](assets/image.png)
 
-The design and goals of EnrichRAG were not created in a vacuum. They are a direct response to, and iteration upon, the current state-of-the-art in Graph-based Retrieval-Augmented Generation (GraphRAG). For any new engineer joining this project, understanding the limitations and design patterns of these foundational works is essential. The following files, located in the `/context` directory, were crucial in shaping our architecture and identifying our core research contribution.
-
-## 3. Architecture: `Parquet + DuckDB + txtai + DVC`
+## 2. Architecture: 
 
 This stack provides a clear separation of concerns and leverages best-in-class tools for each task.
 
 *   **`Parquet` (Data Storage):** All graph nodes and edges are stored in a partitioned, columnar format. This is highly efficient for storage and for analytical queries.
 *   **`DuckDB` (Structured Queries):** Used as a high-speed query engine to perform structured SQL queries directly on the Parquet files. Its primary role is fast graph traversal (e.g., fetching 1-hop neighbors) and attribute-based filtering.
-*   **`txtai` (Search & Indexing):** The dedicated search and retrieval engine. It is responsible for building a persistent, searchable index of the graph's text content. Crucially, it supports efficient incremental updates via its `upsert` method, solving the core limitation of the previous design.
-*   **`DVC` (Data Versioning):** Manages version control for all large data artifacts. This includes the source Parquet files and the derivative `txtai` indexes, ensuring full reproducibility of experiments.
+*   **`BM25/Dense Retrieval Index` (Vector Search):** An open-source vector search engine that provides efficient similarity search over embeddings. It is used to find relevant nodes and edges in the graph as well as relevant documents in the corpus.
 
-## 4. The EnrichRAG Pipeline (The Goal)
+## 3. The EnrichRAG Pipeline (The Goal)
 
 The pipeline is an "online" (inference-time) agent loop that has access to four distinct tools.
 
@@ -53,20 +50,7 @@ The pipeline is an "online" (inference-time) agent loop that has access to four 
         4.  **Update & Cache:** The new facts are added to the **Parquet** files (as a new partition). The **`txtai`** index is then incrementally updated using its `upsert` method. The new data versions are tracked with **`DVC`**.
         5.  **Retry:** The agent restarts the entire Phase 1 loop.
 
-## 5. 🚦 Current Project State
-
-**The project is currently in an architectural refactoring phase before completing the offline build (Phase 0).**
-
-*   **COMPLETED:**
-    *   The **Corpus Index** is **DONE**.
-*   **CURRENT BOTTLENECK (Implementing New Architecture):**
-    *   We have finalized the new, more robust data and indexing architecture: **Parquet + DuckDB + txtai + DVC**.
-    *   The immediate next step is to implement this new architecture. This involves:
-        1.  Refactoring the graph-building scripts (`00_build_...`) to output partitioned **Parquet** files.
-        2.  Creating a new script (`02_build_graph_index.py`) to build the initial **`txtai`** index.
-        3.  Modifying the agent tools (`enrich_rag/tools.py`) to use `DuckDB` for structured queries and `txtai` for relevance search and incremental updates.
-
-## 6.  How to Run the Project
+## 4.  How to Run the Project
 
 1.  **Install Dependencies:**
     *(Note: `txtai` and `duckdb` will be added to requirements.txt)*
