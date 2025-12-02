@@ -84,7 +84,6 @@ The pipeline is an "online" (inference-time) agent loop that has access to four 
 ## 4\. How to Run the Project
 
 1.  **Install Dependencies:**
-    *(Note: `txtai` and `duckdb` will be added to requirements.txt)*
 
     ```bash
     pip install -r requirements.txt
@@ -97,21 +96,18 @@ The pipeline is an "online" (inference-time) agent loop that has access to four 
     ```
 
 3.  **Build Seed Graph:**
-    *This script will be refactored to output Parquet files.*
 
     ```bash
     # python scripts/00_build_graph_rebel.py
     ```
 
 4.  **Build Graph Index:**
-    *This is a new script to be created for txtai.*
 
     ```bash
     # python scripts/02_build_graph_index.py
     ```
 
 5.  **Run Evaluation:**
-    *Once all data and indexes are built using the new architecture.*
 
     ```bash
     python run_evaluation.py --config configs/nq.yaml
