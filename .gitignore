@@ -2,7 +2,9 @@
 run_log*
 GEMINI.md
 .DS_Store
-.dvc/
+.dvc/*
+!.dvc/config
+!.dvc/.gitignore
 .vscode/
 debug/
 README.md
