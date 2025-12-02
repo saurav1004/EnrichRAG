@@ -1,8 +1,6 @@
 # EnrichRAG: An Agentic, Training-Free RAG Pipeline
 
-## 1.  Project Goal
-
-**EnrichRAG** is a novel, training-free, agentic RAG pipeline. Its goal is to achieve state-of-the-art accuracy on complex, open-domain question-answering benchmarks (like NQ and TriviaQA) without the high cost of model training (like in Graph-R1) or reliance on external search APIs.
+**EnrichRAG** is a novel, training-free, agentic RAG pipeline. Its goal is to achieve state-of-the-art accuracy on complex, open-domain question-answering benchmarks (like NQ, 2wikimultihopqa, Musique, HotpotQA etc.) without the high cost of model training (like in Graph-R1) or reliance on external search APIs.
 
 The core idea is to build a **persistent, evolving Knowledge Graph** *exclusively* from a local document corpus. An LLM-powered agent intelligently decides *when* the graph is insufficient and *what* new information to extract from the corpus to "enrich" the graph, improving its knowledge just-in-time.
 
