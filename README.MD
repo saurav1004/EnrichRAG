@@ -1,6 +1,8 @@
 
 ![alt text](assets/banner.png)
 
+⚠️ **This is a work-in-progress project. Please stay tuned for updates** ⚠️
+
 # EnrichRAG: An Agentic, Training-Free RAG Pipeline
 
 **EnrichRAG** is a novel, training-free, agentic RAG pipeline. Its goal is to achieve state-of-the-art accuracy on complex, open-domain question-answering benchmarks (like NQ, 2wikimultihopqa, Musique, HotpotQA etc.) without the high cost of model training (like in Graph-R1) or reliance on external search APIs.
@@ -114,3 +116,19 @@ The pipeline is an "online" (inference-time) agent loop that has access to four 
     ```bash
     python run_evaluation.py --config configs/nq.yaml
     ```
+
+## Acknowledgements & Benchmarking
+
+This project leverages **[FlashRAG](https://github.com/RUC-NLPIR/FlashRAG)** for its comprehensive benchmarking datasets and standardized evaluation metrics. We thank the authors for providing a robust toolkit for RAG research.
+
+```bibtex
+@inproceedings{FlashRAG,
+    author = {Jiajie Jin and Yutao Zhu and Zhicheng Dou and Guanting Dong and Xinyu Yang and Chenghao Zhang and Tong Zhao and Zhao Yang and Ji{-}Rong Wen},
+    title = {FlashRAG: {A} Modular Toolkit for Efficient Retrieval-Augmented Generation Research},
+    booktitle = {Companion Proceedings of the {ACM} on Web Conference 2025, {WWW} 2025},
+    pages = {737--740},
+    publisher = {{ACM}},
+    year = {2025},
+    url = {[https://doi.org/10.1145/3701716.3715313](https://doi.org/10.1145/3701716.3715313)},
+    doi = {10.1145/3701716.3715313}
+}
