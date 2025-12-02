@@ -1,5 +1,5 @@
 
-![alt text](banner.png)
+![alt text](assets/banner.png)
 
 # EnrichRAG: An Agentic, Training-Free RAG Pipeline
 
