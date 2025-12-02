@@ -176,9 +176,10 @@ The project utilizes a two-part development environment:
 
 *   **Local Development:** ONLY Code editing tasks are performed on a MacBook.
 *   **Experimentation & Script Execution:** All large-scale experiments and data processing scripts are run on a high-performance b200 node with the following specifications:
-    *   **CPUs:** 224 cores
+    *   **CPUs:** 224 CPU cores
     *   **GPUs:** 8 x NVIDIA GPUs
     *   **GPU Memory:** > 1TB total
+    *   **RAM:** 2TB RAM
 
 ## Development Conventions
 

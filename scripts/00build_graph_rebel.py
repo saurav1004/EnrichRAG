@@ -13,12 +13,10 @@ import pandas as pd
 import pyarrow as pa
 from collections import defaultdict
 
-# Add the project root to the Python path
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, project_root)
 
 try:
-    # from enrich_rag.graph import PersistentHyperGraph # No longer needed
     import torch
     import transformers
 except ImportError:
@@ -26,9 +24,8 @@ except ImportError:
     sys.exit(1)
 
 # --- Configuration ---
-NUM_WORKERS = 16      
-NLP_BATCH_SIZE = 64  
-MP_CHUNK_SIZE = 256   
+NUM_WORKERS = 16
+MP_CHUNK_SIZE = 384
 
 # ---
 # HELPER FUNCTIONS
@@ -96,30 +93,23 @@ def worker_loop(worker_id, task_queue, result_queue):
                 continue
                 
             try:
-                # Find subj and obj markers
                 subj_start = triplet_text.index("<subj>") + len("<subj>")
                 obj_start = triplet_text.index("<obj>") + len("<obj>")
                 
-                # The relation is between the start of the string and the subj marker
                 relation = triplet_text[:subj_start - len("<subj>")].strip()
                 
-                # The subject is between subj and obj markers
                 subject = triplet_text[subj_start:obj_start - len("<obj>")].strip()
                 
-                # The object is from the obj marker to the end
                 obj = triplet_text[obj_start:].strip()
                 
                 if subject and relation and obj:
                     triples.append({'subject': subject, 'relation': relation, 'object': obj})
             except ValueError:
-                # This can happen if a triplet is malformed (e.g., missing <subj> or <obj>)
-                # print(f"Warning: Malformed triplet, skipping: {triplet_text}")
                 continue
                 
         return triples
 
     try:
-        # 1. Load the REBEL model
         num_visible_gpus = torch.cuda.device_count()
         device_id = worker_id % num_visible_gpus
         device = f"cuda:{device_id}"
@@ -139,7 +129,6 @@ def worker_loop(worker_id, task_queue, result_queue):
         result_queue.put(None) 
         return
 
-    # 2. Start processing loop
     while True:
         try:
             doc_batch = task_queue.get() # This is a batch of DOCS
@@ -191,6 +180,10 @@ def worker_loop(worker_id, task_queue, result_queue):
                     s = triple['subject']
                     r = triple['relation']
                     o = triple['object']
+
+                    if "<subj>" in s or "<obj>" in s or "<subj>" in o or "<obj>" in o:
+                        continue
+
                     triples.append((s, r, o))
                     entities.add(s)
                     entities.add(o)
@@ -227,11 +220,9 @@ def feed_queue(corpus_path, task_queue, num_workers):
     print("Main: All tasks sent to queue.")
 
 def parallel_node_tokenize(node_text):
-    # (This function is unchanged)
     stemmer = Stemmer.Stemmer("english")
     return stemmer.stemWords(str(node_text).split())
 
-# --- Main Execution ---
 def main():
     print("--- Starting Phase 0: Initial Graph Seeding (PARALLEL with REBEL-Large) ---")
     
@@ -244,17 +235,14 @@ def main():
         print(f"Error: {base_config_path} not found.")
         sys.exit(1)
     
-    # 2. Setup Argparser
     parser = argparse.ArgumentParser(description="Build Seed Graph (Parallel)")
     parser.add_argument("--corpus_path", type=str, default=base_config.get('corpus_path'))
     args = parser.parse_args()
     
-    # --- Define output paths ---
     output_dir = os.path.join(project_root, "data", "graphs", "base")
     nodes_path = os.path.join(output_dir, "nodes.parquet")
     edges_path = os.path.join(output_dir, "edges.parquet")
 
-    # 3. Initialize Graph and Lookup
     os.makedirs(output_dir, exist_ok=True)
     
     print("Initializing in-memory lists for nodes and edges...")
@@ -268,7 +256,6 @@ def main():
         print("Corpus file is empty. Exiting.")
         return
     
-    # 5. Manual Process Pool Management (REBEL OIE)
     manager = mp.Manager()
     task_queue = manager.Queue(maxsize=NUM_WORKERS * 4) # Increased queue size
     result_queue = manager.Queue()
@@ -330,7 +317,6 @@ def main():
                 pbar.write(f"Total Unique Nodes: {len(all_nodes)}")
                 pbar.write("-------------------------------------\n") 
 
-    # 7. Cleanup workers
     feeder_process.join()
     for p in processes:
         p.join()

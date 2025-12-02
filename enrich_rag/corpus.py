@@ -16,13 +16,11 @@ class Corpus:
         self.doc_lookup = {}
         self.doc_id_map = [] # Holds doc_ids in the exact order of the index
         
-        # 1. Load the pre-built bm25s index from disk
         print(f"[Corpus] Loading pre-built bm25s index from: {bm25_index_path}...")
         start_time = time.time()
         try:
             self.searcher = bm25s.BM25.load(bm25_index_path, mmap=True)
             
-            # --- THIS IS THE FIX ---
             # Initialize the stemmer for query tokenization
             self.stemmer = Stemmer.Stemmer("english")
             
@@ -32,7 +30,6 @@ class Corpus:
             print("Please run 'scripts/01_build_bm25_index.py' first.")
             raise
 
-        # 2. Load the document text and build lookups
         print(f"[Corpus] Loading doc texts & ID map from: {corpus_path}...")
         start_time = time.time()
         
@@ -57,14 +54,11 @@ class Corpus:
         print("Corpus module ready.")
 
     def retrieve(self, query, k, exclude_doc_ids):
-        # 3. Tokenize and stem query (must match index)
         tokenized_query = self.stemmer.stemWords(query.split())
         
-        # 4. Search using bm25s
         retrieve_k = k * 5 if k * 5 > 100 else 100 
         
         try:
-            # --- THIS IS THE FIX ---
             # We must wrap the single query in a list for the batch retrieval API
             doc_indices, doc_scores = self.searcher.retrieve([tokenized_query], k=retrieve_k)
             doc_indices = doc_indices[0]
@@ -72,7 +66,6 @@ class Corpus:
             self.log(f"Error during bm25s search: {e}")
             return [], []
 
-        # 5. Filter and get top-k
         top_doc_ids = []
         for doc_index in doc_indices:
             if doc_index < len(self.doc_id_map):
@@ -82,5 +75,4 @@ class Corpus:
             if len(top_doc_ids) >= k:
                 break
         
-        # 6. Get text from our lookup dict
         return [self.doc_lookup[doc_id] for doc_id in top_doc_ids], top_doc_ids

@@ -1,13 +1,11 @@
 # configs/nq.yaml
 # Settings for Natural Questions
 
-# --- Benchmark Data ---
 dataset_path: "data/benchmarks/nq/test.jsonl" 
 dataset_loader: "load_nq" 
 metrics: ["em", "f1"] 
 
-# --- Knowledge Source ---
-# This benchmark will use the 'wikipedia_dpr' graph and corpus
+
 corpus_path: "data/corpus/wiki18_100w.jsonl"
 graph_path: "data/graphs/wiki18_100w.graph.json"
 processed_docs_path: "data/graphs/wiki18_100w.docs.json"

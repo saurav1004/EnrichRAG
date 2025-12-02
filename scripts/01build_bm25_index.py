@@ -12,7 +12,6 @@ from rank_bm25 import BM25Okapi
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, project_root)
 
-# --- Top-level function for multiprocessing ---
 def parallel_tokenize(text):
     """A simple top-level function for multiprocessing to call."""
     return text.split()
@@ -20,7 +19,6 @@ def parallel_tokenize(text):
 def main():
     print("--- Starting: Build BM25 Index (PARALLEL) ---")
     
-    # 1. Load config to get default paths
     base_config_path = os.path.join(project_root, "configs", "base.yaml")
     try:
         with open(base_config_path, 'r') as f:
@@ -29,7 +27,6 @@ def main():
         print(f"Error: {base_config_path} not found.")
         sys.exit(1)
     
-    # 2. Setup Argparser
     parser = argparse.ArgumentParser(description="Build BM25 Index")
     parser.add_argument("--corpus_path", type=str, default=base_config.get('corpus_path'))
     parser.add_argument("--bm25_index_path", type=str, default=base_config.get('bm25_index_path'))
@@ -39,7 +36,6 @@ def main():
         print("Error: 'corpus_path' or 'bm25_index_path' not defined in configs/base.yaml or args.")
         sys.exit(1)
 
-    # 3. Load documents from JSONL
     doc_texts_for_bm25 = []
     print(f"Loading corpus for BM25 build: {args.corpus_path}")
     try:
@@ -60,7 +56,6 @@ def main():
         print("No documents loaded. Exiting.")
         sys.exit(1)
 
-    # 4. Parallel Tokenization
     print(f"Tokenizing {len(doc_texts_for_bm25)} documents using all CPU cores...")
     num_cores = mp.cpu_count()
     print(f"Using {num_cores} cores...")
@@ -75,7 +70,6 @@ def main():
     print("Tokenization complete. Initializing BM25 index...")
     bm25_index = BM25Okapi(tokenized_corpus)
     
-    # 5. Save the index to disk
     print(f"Saving BM25 index to: {args.bm25_index_path}...")
     os.makedirs(os.path.dirname(args.bm25_index_path), exist_ok=True)
     with open(args.bm25_index_path, "wb") as f:

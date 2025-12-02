@@ -5,7 +5,7 @@ from transformers import AutoTokenizer
 class LLMAgent:
     def __init__(self, model_path, max_input_len=4096):
         self.llm = LLM(model=model_path,
-                       tensor_parallel_size=1, # Change this if using >1 GPU for the LLM
+                       tensor_parallel_size=1, 
                        trust_remote_code=True
                       )
         self.tokenizer = self.llm.get_tokenizer()

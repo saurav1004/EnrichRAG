@@ -1,27 +1,28 @@
 # configs/base.yaml
 # Shared settings for ALL benchmarks
 
-# --- Model Paths ---
-llm_path: "unsloth/Meta-Llama-3.1-8B-Instruct"
-
+base_graph_path: "data/graphs/base"
 corpus_path: "data/corpus/wiki18_100w.jsonl"
+
 graph_path: "data/graphs/wiki18_100w_rebel_large_graph.json"
 processed_docs_path: "data/graphs/wiki18_100w_rebel_large_docs.json"
-#bm25_index_path: "data/graphs/wiki18_100w.bm25.pkl"
 bm25_index_path: "data/graphs/wiki18_100w_bm25s_index/"
 node_index_path: "data/graphs/wiki18_100w_bm25s_node_index/"
 edge_index_path: "data/graphs/wiki18_100w_bm25s_edge_index/"
 chunk_index_path: "data/graphs/wiki18_100w_bm25s_chunk_index/"
 
-# --- Agent Settings ---
+
+llm_path: "unsloth/Meta-Llama-3.1-8B-Instruct"
+
+
 max_iterations: 3
 confidence_threshold: 3.0
 info_gain_epsilon: 0.1
 
-# --- Tool Settings ---
+
 pcst_k_prize_nodes: 5
 pcst_k_prize_edges: 5
+pcst_prize_scale_factor: 1000.0
 enrich_graph_k_docs: 3
 
-# --- Output Settings ---
 output_dir: "results/"

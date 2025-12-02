@@ -13,7 +13,7 @@ from .tools import EnrichContextTool, CheckSufficiencyTool, AnalyzeDecideTool, E
 class EnrichRAGPipeline:
     def __init__(self, cfg):
         self.cfg = cfg
-        self.experiment_id = str(uuid.uuid4())
+        self.experiment_id = cfg.get('experiment_name', str(uuid.uuid4()))
         
         # --- Directory and Path Setup ---
         project_root = Path(__file__).parent.parent
@@ -21,20 +21,21 @@ class EnrichRAGPipeline:
         self.experiment_dir = project_root / "data" / "graphs" / "experiments" / self.experiment_id
         self.experiment_dir.mkdir(parents=True, exist_ok=True)
 
-        # --- Logging Setup ---
         log_path = self.experiment_dir / 'run_log.txt'
         self.log_file = open(log_path, 'w')
         
         self._log(f"--- Initializing New EnrichRAG Run ---")
         self._log(f"Experiment ID: {self.experiment_id}")
         self._log(f"Experiment Directory: {self.experiment_dir}")
+        self._log(f"\n--- RUN CONFIGURATION ---\n{json.dumps(self.cfg, indent=2)}\n-------------------------\n")
 
-        # --- Copy Base Index ---
         base_index_path = self.base_dir / "graph_index.txtai"
         self.exp_index_path = self.experiment_dir / "graph_index.txtai"
         self._log(f"Copying base index from '{base_index_path}' to '{self.exp_index_path}'")
         try:
             shutil.copytree(base_index_path, self.exp_index_path)
+        except FileExistsError:
+            self._log("Experiment index already exists. Resuming run.")
         except FileNotFoundError:
             self._log(f"ERROR: Base index not found at '{base_index_path}'. Please run scripts/02_build_graph_index.py")
             raise
@@ -55,7 +56,12 @@ class EnrichRAGPipeline:
         self.corpus = Corpus(cfg['corpus_path'], cfg['bm25_index_path']) 
             
         self._log("[Pipeline] Initializing Tools...")
-        self.enrich_context = EnrichContextTool(self.graph, str(self.exp_index_path), self._log)
+        self.enrich_context = EnrichContextTool(
+            self.graph, 
+            str(self.exp_index_path), 
+            self._log,
+            prize_scale_factor=cfg.get('pcst_prize_scale_factor', 1000.0)
+        )
         self.check_sufficiency = CheckSufficiencyTool(self.llm, cfg['info_gain_epsilon'], self._log)
         self.analyze_decide = AnalyzeDecideTool(cfg['confidence_threshold'], self._log)
         self.enrich_graph = EnrichGraphTool(self.llm, self.corpus, self._log)
@@ -75,6 +81,7 @@ class EnrichRAGPipeline:
 
         context = []
         retrieved_nodes = set()
+        processed_doc_ids = set() 
         perplexity_prev = float('inf')
         full_context_str = ""
         
@@ -82,8 +89,9 @@ class EnrichRAGPipeline:
             self._log(f"--- [Query: {query[:50]}...] --- Iteration {i+1} ---")
             
             new_context_str, new_nodes = self.enrich_context.run(
-                query, 
-                k=self.cfg.get('k_retrieved_nodes', 20),
+                query,
+                k_nodes=self.cfg.get('pcst_k_prize_nodes', 5),
+                k_hops=self.cfg.get('graph_k_hops', 2),
                 exclude_nodes=retrieved_nodes
             )
             
@@ -110,21 +118,23 @@ class EnrichRAGPipeline:
                 if decision == "CONFIDENT":
                     return self._run_final_generation(query, full_context_str)
                 
-                else: # NEEDS_ENRICHMENT
+                else: 
                     self._log("Tool 4 (EnrichGraph): Triggered.")
                     
-                    enrichment_happened = self.enrich_graph.run(
+                    newly_processed_ids = self.enrich_graph.run(
                         query=query,
                         context=full_context_str,
                         experiment_dir=self.experiment_dir,
                         index_path=self.exp_index_path,
-                        k_docs=self.cfg['enrich_graph_k_docs']
+                        k_docs=self.cfg['enrich_graph_k_docs'],
+                        exclude_doc_ids=processed_doc_ids
                     )
                     
-                    if not enrichment_happened:
+                    if not newly_processed_ids:
                         self._log("EnrichGraph failed to find new info, ending loop.")
                         return self._run_final_generation(query, full_context_str)
 
+                    processed_doc_ids.update(newly_processed_ids)
                     self._log("Graph enriched. Continuing agent loop.")
                     
             perplexity_prev = perplexity_curr

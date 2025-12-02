@@ -1,1 +1,13 @@
-/auth_test.txt
+/auth_test.txt*
+run_log*
+GEMINI.md
+.DS_Store
+.dvc/
+.vscode/
+debug/
+README.md
+.gemini 
+.env
+context/
+*.dvc
+

@@ -16,11 +16,9 @@ def load_config(config_file):
     """
     global settings
     
-    # --- Robustly find base.yaml ---
     config_dir = os.path.dirname(config_file)
     base_config_path = os.path.join(config_dir, "base.yaml")
     if not os.path.exists(base_config_path):
-        # If not found, check the parent directory
         parent_dir = os.path.dirname(config_dir)
         base_config_path = os.path.join(parent_dir, "base.yaml")
     
@@ -30,25 +28,20 @@ def load_config(config_file):
     if not os.path.exists(config_file):
         raise FileNotFoundError(f"{config_file} not found.")
 
-    # 1. Load base config
     with open(base_config_path, 'r') as f:
         base_config = yaml.safe_load(f)
     
-    # 2. Load dataset-specific config
     with open(config_file, 'r') as f:
         dataset_config = yaml.safe_load(f)
         
-    # 3. Merge them
     settings.update(base_config)
     settings.update(dataset_config)
     
-    # 4. Create a unique experiment directory
     dataset_name = os.path.splitext(os.path.basename(config_file))[0]
     experiment_name = f"{dataset_name}_{get_timestamp()}"
     settings['experiment_path'] = os.path.join(settings['output_dir'], experiment_name)
     os.makedirs(settings['experiment_path'], exist_ok=True)
     
-    # 5. Save the configs to the experiment directory
     try:
         shutil.copy(config_file, settings['experiment_path'])
         shutil.copy(base_config_path, settings['experiment_path'])

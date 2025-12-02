@@ -92,18 +92,23 @@ def main():
         sys.exit(0)
 
     # 5. Create and build the txtai index
-    # Using BM25 for a fast, keyword-based index
-    print("\nInitializing txtai Embeddings with BM25 configuration...")
+    # Using "keyword: True" is the idiomatic way to create a sparse-only BM25 index.
+    # This implicitly disables vector search components, preventing the download and
+    # memory overhead of a default sentence-transformer model.
+    print("\nInitializing txtai Embeddings for a sparse-only BM25 index...")
     embeddings = txtai.Embeddings({
-        "content": True, # Enable content storage to retrieve full data
+        "keyword": True,   # Enable keyword-only index, implicitly disables vectors
+        "content": True,   # Enable content storage to retrieve full data
         "bm25": {
             "stopwords": "english",
             "stemmer": "english",
-            "tokenizer": "nltk.word_tokenize"
+            "tokenizer": "nltk.word_tokenize",
+            "terms": True
         }
     })
 
-    print(f"Indexing {len(index_data)} documents with BM25... This should be fast.")
+    print(f"Indexing {len(index_data)} documents with BM25... This may take some time.")
+    # The index method for BM25 is CPU-bound and can be memory intensive.
     embeddings.index(index_data)
 
     # 6. Save the index

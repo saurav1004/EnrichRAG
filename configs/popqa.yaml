@@ -1,13 +1,11 @@
 # configs/triviaqa.yaml
 # Settings for PopQA
 
-# --- Benchmark Data ---
 dataset_path: "data/benchmarks/popqa/test.jsonl" 
 dataset_loader: "load_popqa" 
 metrics: ["em", "f1"] 
 
-# --- Knowledge Source ---
-# This benchmark will use the 'wikipedia_dpr' graph and corpus
+
 corpus_path: "data/corpus/wiki18_100w.jsonl"
 graph_path: "data/graphs/wiki18_100w_rebel_large_graph.json"
 processed_docs_path: "data/graphs/wiki18_100w_rebel_large_docs.json"

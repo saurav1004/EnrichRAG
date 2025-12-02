@@ -13,17 +13,14 @@ import time
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 sys.path.insert(0, project_root)
 
-# --- Top-level function for multiprocessing ---
 def parallel_tokenize(text):
     """A simple top-level function for multiprocessing to call."""
     stemmer = Stemmer.Stemmer("english")
-    # Tokenize and stem
     return stemmer.stemWords(str(text).split())
 
 def main():
     print("--- Starting: Build bm25s EDGE Index (PARALLEL) ---")
     
-    # 1. Load config
     base_config_path = os.path.join(project_root, "configs", "base.yaml")
     try:
         with open(base_config_path, 'r') as f:
@@ -32,7 +29,6 @@ def main():
         print(f"Error: {base_config_path} not found.")
         sys.exit(1)
     
-    # 2. Setup Argparser
     parser = argparse.ArgumentParser(description="Build bm25s Edge Index")
     parser.add_argument("--graph_path", type=str, default=base_config.get('graph_path'))
     parser.add_argument("--edge_index_path", type=str, default=base_config.get('edge_index_path'), 
@@ -43,7 +39,6 @@ def main():
         print("Error: 'graph_path' or 'edge_index_path' not defined in configs/base.yaml or args.")
         sys.exit(1)
         
-    # 3. Load the 29GB graph.json file
     edge_list = [] # This will map index_id -> {"s": "sub", "r": "rel", "t": "obj"}
     edge_texts_for_bm25 = [] # This is what we will index
     
@@ -85,7 +80,6 @@ def main():
         
     print(f"Extracted {len(edge_texts_for_bm25)} meaningful triples.")
 
-    # 4. Parallel Tokenization
     print(f"Tokenizing {len(edge_texts_for_bm25)} triples using all CPU cores...")
     num_cores = mp.cpu_count()
     print(f"Using {num_cores} cores...")
@@ -99,15 +93,13 @@ def main():
     
     print("Tokenization complete. Initializing bm25s index...")
     
-    # 5. Initialize bm25s indexer
     bm25_edge_indexer = bm25s.BM25()
     
     # Index the tokenized triples
     print("Indexing triples... This may take some time.")
     bm25_edge_indexer.index(tokenized_edges)
     
-    # 6. Save the index and the edge_list map
-    print(f"Saving bm2s edge index to: {args.edge_index_path}...")
+    print(f"Saving bm25s edge index to: {args.edge_index_path}...")
     os.makedirs(args.edge_index_path, exist_ok=True)
     bm25_edge_indexer.save(args.edge_index_path)
     

@@ -28,7 +28,6 @@ except ImportError:
     print("Please run `pip install textacy`")
     sys.exit(1)
 
-# --- Configuration ---
 USEFUL_ENTITY_LABELS = {
     "PERSON", "ORG", "GPE", "PRODUCT", "EVENT", "WORK_OF_ART", "LOC", "FAC",
 }
@@ -126,13 +125,11 @@ def worker_loop(worker_id, task_queue, result_queue):
             for spacy_doc, doc_id in zip(nlp_worker.pipe(texts, batch_size=NLP_BATCH_SIZE), doc_ids):
                 chunk_text = " ".join([sent.text for sent in spacy_doc.sents])
                 
-                # --- 1. Extract Entities (NER) ---
                 entities = list(sorted(set([
                     ent.text.strip() for ent in spacy_doc.ents 
                     if ent.label_ in USEFUL_ENTITY_LABELS
                 ])))
                 
-                # --- 2. Extract Triples (OIE) with textacy ---
                 triples_generator = textacy.extract.subject_verb_object_triples(spacy_doc)
                 triples = []
                 for s, v, o in triples_generator:
@@ -177,11 +174,9 @@ def parallel_node_tokenize(node_text):
     stemmer = Stemmer.Stemmer("english")
     return stemmer.stemWords(str(node_text).split())
 
-# --- Main Execution ---
 def main():
     print("--- Starting Phase 0: Initial Graph Seeding (PARALLEL with Textacy) ---")
     
-    # 1. Load config
     base_config_path = os.path.join(project_root, "configs", "base.yaml")
     try:
         with open(base_config_path, 'r') as f:
@@ -190,29 +185,23 @@ def main():
         print(f"Error: {base_config_path} not found.")
         sys.exit(1)
     
-    # 2. Setup Argparser
     parser = argparse.ArgumentParser(description="Build Seed Graph (Parallel)")
     parser.add_argument("--corpus_path", type=str, default=base_config.get('corpus_path'))
     
-    # --- Arguments for unique filenames ---
     parser.add_argument("--graph_name", type=str, default="textacy_graph.json")
     parser.add_argument("--docs_name", type=str, default="textacy_docs.json")
     parser.add_argument("--node_index_name", type=str, default="textacy_bm25s_node_index")
 
     args = parser.parse_args()
     
-    # --- Create full paths ---
     graph_path = os.path.join("data/graphs", args.graph_name)
     docs_path = os.path.join("data/graphs", args.docs_name)
     node_index_path = os.path.join("data/graphs", args.node_index_name)
 
-    # 3. Initialize Graph and Lookup
     os.makedirs(os.path.dirname(graph_path), exist_ok=True)
     os.makedirs(os.path.dirname(docs_path), exist_ok=True)
     
     print("Initializing new, empty graph...")
-    # We need to make sure graph.py is using the right init
-    # Let's assume the 3-arg init (with skip_index_load) is correct
     try:
         graph = PersistentHyperGraph(graph_path, node_index_path=None, skip_index_load=True)
     except TypeError:
@@ -221,13 +210,11 @@ def main():
         
     processed_docs = defaultdict(lambda: {"entities": set(), "triples": []})
     
-    # 4. Get total doc count (This is now for *documents*)
     total_docs = count_lines(args.corpus_path)
     if total_docs == 0:
         print("Corpus file is empty. Exiting.")
         return
     
-    # 5. Manual Process Pool Management (SpaCy NER/OIE)
     manager = mp.Manager()
     task_queue = manager.Queue(maxsize=NUM_WORKERS * 4) # Increased queue size
     result_queue = manager.Queue()
@@ -242,7 +229,6 @@ def main():
     feeder_process = mp.Process(target=feed_queue, args=(args.corpus_path, task_queue, NUM_WORKERS))
     feeder_process.start()
 
-    # 6. Collect results and build graph
     print("Main: Waiting for NER/OIE results...")
     workers_done = 0
     
@@ -268,20 +254,17 @@ def main():
             if pbar.n < total_docs:
                 pbar.update(len(docs_in_batch)) 
 
-    # 7. Cleanup workers
     feeder_process.join()
     for p in processes:
         p.join()
     
     print("\nMain: All OIE workers have finished.")
     
-    # --- 8. Build the graph from the collected results ---
     print("Building final graph from collected triples...")
     for doc_id, data in tqdm(processed_docs.items(), desc="Adding to graph"):
         if data["entities"] or data["triples"]:
             graph.add_chunk_and_facts(doc_id, 0, "", list(data["entities"]), data["triples"])
 
-    # 9. Cache Graph and Lookup (Initial Save)
     print("Saving graph to disk...")
     graph.save()
     with open(docs_path, 'w', encoding='utf-8') as f:
@@ -291,7 +274,6 @@ def main():
         json.dump(json_friendly_docs, f)
     print(f"Graph and docs lookup saved.")
 
-    # --- 10. OPTIMIZED: Build and save the BM25 *ENTITY NODE* index ---
     print("\n--- Starting BM25 Node Index Build (Optimized) ---")
     
     all_nodes = list(graph.graph.nodes())
